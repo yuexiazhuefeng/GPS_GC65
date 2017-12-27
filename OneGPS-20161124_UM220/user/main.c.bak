@@ -1,0 +1,390 @@
+/**
+  ******************************************************************************
+  * @file    SysTick/main.c 
+  * @author  MCD Application Team
+  * @version V1.0.0
+  * @date    23-March-2012
+  * @brief   Main program body
+  ******************************************************************************
+  * @attention
+  *
+  * <h2><center>&copy; COPYRIGHT 2012 STMicroelectronics</center></h2>
+  *
+  * Licensed under MCD-ST Liberty SW License Agreement V2, (the "License");
+  * You may not use this file except in compliance with the License.
+  * You may obtain a copy of the License at:
+  *
+  *        http://www.st.com/software_license_agreement_liberty_v2
+  *
+  * Unless required by applicable law or agreed to in writing, software 
+  * distributed under the License is distributed on an "AS IS" BASIS, 
+  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  * See the License for the specific language governing permissions and
+  * limitations under the License.
+  *
+  ******************************************************************************
+  */ 
+
+/* Includes ------------------------------------------------------------------*/
+#include "main.h"
+#include "stm32f0xx_gpio.h"
+#include "stm32f0xx_rcc.h"
+
+/** @addtogroup STM32F0_Discovery_Peripheral_Examples
+  * @{
+  */
+
+/** @addtogroup SysTick_Example
+  * @{
+  */ 
+
+/* Private typedef -----------------------------------------------------------*/
+#define Parity_No   0
+#define Parity_Odd  1
+#define Parity_Even 2
+
+typedef	struct _uart_ctl_
+{
+	void* reg;  //???????
+	void *pRbuf,*pTbuf;
+	s16 Ri,Ro;
+	s16 Ti,To;
+	s16 tlen,rlen;
+	u32 flag; //???????,??1:GPS
+	s32 rate;
+	u8 ComId;
+	u8 Parity;
+	u8 DataBit;
+	u8 StopBit;
+	u8 RMsgLock;
+	u32 RTimeOver;   //????
+}uart_ctl_t;
+
+
+#define UART1_rbuf_len   128
+#define UART1_tbuf_len   128
+#define UART2_rbuf_len   128
+#define UART2_tbuf_len   128
+
+uart_ctl_t UART1_ctl_t;
+uart_ctl_t UART2_ctl_t;
+
+ u8 UART1_rbuf[UART1_rbuf_len];
+ u8 UART1_tbuf[UART1_tbuf_len];
+ u8 UART2_rbuf[UART2_rbuf_len];
+ u8 UART2_tbuf[UART2_tbuf_len];
+
+/* Private define ------------------------------------------------------------*/
+/* Private macro -------------------------------------------------------------*/
+/* Private variables ---------------------------------------------------------*/
+GPIO_InitTypeDef GPIO_InitStructure;
+static __IO uint32_t TimingDelay;
+
+/* Private function prototypes -----------------------------------------------*/
+void Delay(__IO uint32_t nTime);
+
+
+void ddi_uart_init(void)
+{
+    //GPIO????
+  GPIO_InitTypeDef GPIO_InitStructure;
+	//USART_InitTypeDef USART_InitStructure;
+	NVIC_InitTypeDef NVIC_InitStructure;
+
+
+	UART1_ctl_t.reg = USART1;
+
+	UART1_ctl_t.Parity = 0;
+
+	UART1_ctl_t.RMsgLock = 0;
+	UART1_ctl_t.RTimeOver = 0;
+	UART1_ctl_t.Ro = 0;
+	RCC_AHBPeriphClockCmd(RCC_AHBPeriph_GPIOA, ENABLE); 
+	//RCC_APB2PeriphClockCmd(RCC_APB2Periph_USART1, ENABLE);
+
+
+	 //USART1_TX   PA.9
+	GPIO_InitStructure.GPIO_Pin = GPIO_Pin_9;
+  GPIO_InitStructure.GPIO_Mode = GPIO_Mode_AF;
+  GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
+  GPIO_InitStructure.GPIO_OType = GPIO_OType_PP;
+  GPIO_InitStructure.GPIO_PuPd = GPIO_PuPd_UP ;
+  GPIO_Init(GPIOA, &GPIO_InitStructure);
+	
+	
+
+	//USART1_RX	  PA.10
+	GPIO_InitStructure.GPIO_Pin = GPIO_Pin_10;
+	GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
+  GPIO_InitStructure.GPIO_Mode = GPIO_Mode_AF;
+  GPIO_InitStructure.GPIO_PuPd = GPIO_PuPd_UP;
+	GPIO_Init(GPIOA, &GPIO_InitStructure);  
+	
+	
+	
+	//mco	  PA.8
+	GPIO_InitStructure.GPIO_Pin = GPIO_Pin_8;
+	GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
+  GPIO_InitStructure.GPIO_Mode = GPIO_Mode_AF;
+  GPIO_InitStructure.GPIO_PuPd = GPIO_PuPd_UP;
+	GPIO_Init(GPIOA, &GPIO_InitStructure);  
+	
+	GPIO_PinAFConfig(GPIOA,GPIO_Pin_8,GPIO_AF_0) ;
+	GPIO_PinAFConfig(GPIOA,GPIO_Pin_9,GPIO_AF_1) ;
+	GPIO_PinAFConfig(GPIOA,GPIO_Pin_10,GPIO_AF_1) ;
+	//Usart1 NVIC ??
+
+//	NVIC_InitStructure.NVIC_IRQChannel = USART1_IRQn;
+//	NVIC_InitStructure.NVIC_IRQChannelPriority = 3;
+//	NVIC_InitStructure.NVIC_IRQChannelCmd = ENABLE;		//
+//	NVIC_Init(&NVIC_InitStructure);	//??NVIC_InitStruct???????????NVIC???USART1
+//  USART_Cmd(USART1, ENABLE);              
+}
+
+
+
+/**********************************************************************
+//??:??COM ???????
+//??1:????????
+//??2:???
+//??3:?????
+//??:????????,????NULL
+**********************************************************************/
+uart_ctl_t* ddi_uart_open(uart_ctl_t *pCOM,u32 BaudRate)
+{
+	USART_InitTypeDef USART_InitStructure;
+//USART ?????
+  RCC_APB2PeriphClockCmd(RCC_APB2Periph_USART1, ENABLE);
+
+//????
+	USART_Cmd(pCOM->reg, DISABLE);                    //???? 
+	USART_ITConfig(pCOM->reg, USART_IT_RXNE, DISABLE);//????
+	USART_DeInit(pCOM->reg);
+	
+   
+	USART_InitStructure.USART_BaudRate = BaudRate;//pCOM->rate;//?????9600;
+	
+	USART_InitStructure.USART_StopBits = USART_StopBits_1;//pCOM->StopBit;//USART_StopBits_1;
+
+	if (pCOM->Parity == 1)
+	{
+		USART_InitStructure.USART_Parity = USART_Parity_Odd;//pCOM->Parity;//USART_Parity_No;
+	//	USART_InitStructure.USART_WordLength = USART_WordLength_9b;//pCOM->DataBit;//USART_WordLength_8b;
+	}
+	else	
+	if (pCOM->Parity == 2)
+	{
+		USART_InitStructure.USART_Parity = USART_Parity_Even;//pCOM->Parity;//USART_Parity_No;
+	//	USART_InitStructure.USART_WordLength = USART_WordLength_9b;//pCOM->DataBit;//USART_WordLength_8b;
+	}
+	else
+	{
+		USART_InitStructure.USART_Parity = USART_Parity_No;//pCOM->Parity;//USART_Parity_No;
+	//	USART_InitStructure.USART_WordLength = USART_WordLength_8b;//pCOM->DataBit;//USART_WordLength_8b;
+	}
+	USART_InitStructure.USART_WordLength = USART_WordLength_8b;//pCOM->DataBit;//USART_WordLength_8b;	
+	USART_InitStructure.USART_HardwareFlowControl = USART_HardwareFlowControl_None;
+	USART_InitStructure.USART_Mode = USART_Mode_Rx | USART_Mode_Tx;
+
+	USART_Init(pCOM->reg, &USART_InitStructure);
+
+
+	USART_ITConfig(pCOM->reg, USART_IT_RXNE, ENABLE);//????
+
+	USART_Cmd(pCOM->reg, ENABLE);                    //???? 
+
+	return pCOM;
+
+}
+
+
+//UART TEST 
+void USART1_IRQHandler(void)                	//??1??????
+{
+	u8 Res;
+	u8 err1;
+//	u32 len;
+
+	if(USART_GetITStatus(USART1, USART_IT_RXNE) != RESET)  
+	{
+		Res = USART_ReceiveData(USART1);
+		USART_SendData(USART1,Res);
+  		 
+  }
+	if(USART_GetITStatus(USART1, USART_IT_TXE) != RESET)  
+	{
+
+			USART_SendData(USART1,Res);
+
+	}
+	
+} 
+
+/**********************************************************************
+//说明:向端口发送数据
+//参数1:端口句柄
+//参数2:写数据指针
+//参数3:写数据长度
+//返回:实际写数据长度
+**********************************************************************/
+s16 ddi_uart_Write(uart_ctl_t *pCOM,const u8 *pDat,s16 size)
+{
+
+	u8 Res;
+	s16 t;
+	for(t=0;t<size;t++)
+	{
+		USART_SendData(USART1,*pDat++);;
+		while((USART1->ISR&USART_ISR_TXE)==0);//等待发送结束
+	}
+ // 
+	return size;
+
+}
+/* Private functions ---------------------------------------------------------*/
+
+/**
+  * @brief   Main program
+  * @param  None
+  * @retval None
+  */
+int main(void)
+{
+  /*!< At this stage the microcontroller clock setting is already configured, 
+       this is done through SystemInit() function which is called from startup
+       file (startup_stm32f0xx.s) before to branch to application main.
+       To reconfigure the default setting of SystemInit() function, refer to
+       system_stm32f0xx.c file
+     */     
+   
+  /* Initialize Leds mounted on STM32F0-discovery */
+  STM_EVAL_LEDInit(LED3);
+  STM_EVAL_LEDInit(LED4);
+
+  /* Turn on LED3 and LED4 */
+  STM_EVAL_LEDOn(LED3);
+  STM_EVAL_LEDOn(LED4);
+
+	
+
+	
+  /* Setup SysTick Timer for 1 msec interrupts.
+     ------------------------------------------
+    1. The SysTick_Config() function is a CMSIS function which configure:
+       - The SysTick Reload register with value passed as function parameter.
+       - Configure the SysTick IRQ priority to the lowest value (0x0F).
+       - Reset the SysTick Counter register.
+       - Configure the SysTick Counter clock source to be Core Clock Source (HCLK).
+       - Enable the SysTick Interrupt.
+       - Start the SysTick Counter.
+    
+    2. You can change the SysTick Clock source to be HCLK_Div8 by calling the
+       SysTick_CLKSourceConfig(SysTick_CLKSource_HCLK_Div8) just after the
+       SysTick_Config() function call. The SysTick_CLKSourceConfig() is defined
+       inside the stm32f0xx_misc.c file.
+
+    3. You can change the SysTick IRQ priority by calling the
+       NVIC_SetPriority(SysTick_IRQn,...) just after the SysTick_Config() function 
+       call. The NVIC_SetPriority() is defined inside the core_cm0.h file.
+
+    4. To adjust the SysTick time base, use the following formula:
+                            
+         Reload Value = SysTick Counter Clock (Hz) x  Desired Time base (s)
+    
+       - Reload Value is the parameter to be passed for SysTick_Config() function
+       - Reload Value should not exceed 0xFFFFFF
+   */
+  if (SysTick_Config(SystemCoreClock / 1000))
+  { 
+    /* Capture error */ 
+    while (1);
+  }
+
+		
+	ddi_uart_init();
+//	RCC_APB1PeriphClockCmd(RCC_APB1Periph_PWR | RCC_APB1Periph_BKP, ENABLE);	//使能PWR和BKP外设时钟   
+//	PWR_BackupAccessCmd(ENABLE);	//使能RTC和后备寄存器访问 
+
+  
+
+	UART1_ctl_t.Parity = Parity_No;
+
+	ddi_uart_open(&UART1_ctl_t,9600);
+//	delayms(1);
+
+	ddi_uart_Write(&UART1_ctl_t,"\r\n-------------FHT-一体机主机  BOOT    v40140322------------- \r\n",
+							sizeof("\r\n-------------FHT-一体机主机  BOOT    v40140322------------- \r\n"));	
+	
+  while (1)
+  {
+    /* Toggle LED4 */
+    STM_EVAL_LEDToggle(LED4);
+
+    /* Insert 50 ms delay */
+   // Delay(50);
+
+    /* Toggle LED3 */
+    STM_EVAL_LEDToggle(LED3);
+//	  ddi_uart_Write(&UART1_ctl_t,"\r\n-------------FHT-一体机主机  BOOT    v40140322------------- \r\n",
+//							sizeof("\r\n-------------FHT-一体机主机  BOOT    v40140322------------- \r\n"));	
+
+    /* Insert 100 ms delay */
+   // Delay(100);
+  }
+}
+
+/**
+  * @brief  Inserts a delay time.
+  * @param  nTime: specifies the delay time length, in milliseconds.
+  * @retval None
+  */
+void Delay(__IO uint32_t nTime)
+{ 
+  TimingDelay = nTime;
+
+  while(TimingDelay != 0);
+}
+
+/**
+  * @brief  Decrements the TimingDelay variable.
+  * @param  None
+  * @retval None
+  */
+void TimingDelay_Decrement(void)
+{
+  if (TimingDelay != 0x00)
+  { 
+    TimingDelay--;
+  }
+}
+
+#ifdef  USE_FULL_ASSERT
+
+/**
+  * @brief  Reports the name of the source file and the source line number
+  *         where the assert_param error has occurred.
+  * @param  file: pointer to the source file name
+  * @param  line: assert_param error line source number
+  * @retval None
+  */
+void assert_failed(uint8_t* file, uint32_t line)
+{ 
+  /* User can add his own implementation to report the file name and line number,
+     ex: printf("Wrong parameters value: file %s on line %d\r\n", file, line) */
+
+  /* Infinite loop */
+  while (1)
+  {
+  }
+}
+#endif
+
+/**
+  * @}
+  */ 
+
+/**
+  * @}
+  */ 
+
+/************************ (C) COPYRIGHT STMicroelectronics *****END OF FILE****/

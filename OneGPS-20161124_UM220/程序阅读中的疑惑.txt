@@ -1,0 +1,12 @@
+1、串口中断方式接收短信，UART0串口0应该没打开吧，GSM是通过USART1跟单片机通信的。
+   UART0_ReceiveData(g_ucSim900Buff,0);  
+2、消息头里面的消息体属性，怎么需要交换高低字节
+   swapHLchar((u8*)&(tmp_head.attribute),sizeof (tmp_head.attribute));
+
+变量分析：
+gps_gate: 1，在串口2中可以往g_ucNeo6QBuff写入刚获得的最新GPS数据，
+	  0，有程序在操作g_ucNeo6QBuff数组中的数据，不能往里面写
+
+g_ucNeo6QBuff：在串口中缓存刚得到的GPS数据
+
+backup_g_ucNeo6QBuff：GPS数据备份，从g_ucNeo6QBuff里面备份的。

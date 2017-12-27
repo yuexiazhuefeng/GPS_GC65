@@ -1,0 +1,6 @@
+#ifdef __gps_h__
+#define __gps_h__
+
+unsigned char GetAvailableGPSInfo(void);
+
+#endif //__gps_h__

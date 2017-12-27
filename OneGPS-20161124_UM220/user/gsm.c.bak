@@ -1,0 +1,475 @@
+
+/*
+**-----------------------------------------------------------------------------
+**
+**	概述:
+**		开始 GPRS 连接
+**
+**	参数:
+**		无
+**
+**	返回:
+**		无
+**
+**-----------------------------------------------------------------------------
+*/
+void StartGPRS(void)
+{
+
+        unsigned char temp[50] = "AT+MIPOPEN=1,5800,\"";
+        unsigned char i=0;
+	  unsigned char lens;
+	  
+        DebugOut("\r\nNow StartGPRS!!\r\n",0);
+	  if ((lens = strlen((char *)g_ucIPAddress)) > 16)
+	  	lens = 16;
+	  
+        strncat((char *)temp,(char *)g_ucIPAddress,lens);
+        strcat((char *)temp,"\",");
+	  if ((lens = strlen((char *)g_ucUDPPort)) > 5)
+	  	lens = 5;			
+        strncat((char *)temp,(char *)g_ucUDPPort,lens);
+        strcat((char *)temp,",1\r"); //0 tcp ;1:udp
+
+        UART0_SendData("AT+CPIN?\r",10);
+	 WaitGSMOK();  
+
+       SoftDelay_ms(2);
+
+        UART0_SendData("AT+CSQ\r",10);
+
+        WaitGSMOK();
+        DebugOut(g_ucSim900Buff,0);
+        SoftDelay_ms(10);
+        
+//        do{  
+//          UART0_SendData("AT+COPS=?\r",11);
+//        }while(WaitGSMOK1());
+       
+        do{
+          i++;
+          if ( i> 10)
+            break;  
+          UART0_SendData("AT+COPS?\r",10);
+          
+        }while(WaitGSMOK1());
+        
+        if(strstr(g_ucSim900Buff,"MOBILE") != NULL)
+        {  
+          
+           UART0_SendData("AT+CGREG?\r",11);
+           WaitGSMOK();
+	     SoftDelay_ms(2);
+           
+           UART0_SendData("AT+MIPCALL=1,\"CMNET\"\r",22);
+           WaitGSMOK();
+         }   
+           
+           
+        else
+        {
+          
+           UART0_SendData("AT+CREG?\r",10);
+           WaitGSMOK();
+	     SoftDelay_ms(2);
+           UART0_SendData("AT+CGREG?\r",11);
+           WaitGSMOK();
+	    #if 0	   
+           i = 0;
+            do{
+                i++;
+                if ( i== 0)
+                  break;  
+              UART0_SendData("AT+MIPCALL=1,\"UNINET\"\r",23);
+            }while(WaitGSMOK1());   
+	     #else
+		UART0_SendData("AT+MIPCALL=1,\"UNINET\"\r",23);
+              WaitGSMOK1();    
+	     #endif		
+            
+        }    
+           UART0_SendData("AT+MIPCALL?\r",12);
+           WaitGSMOK();
+           SoftDelay_ms(2);
+
+          // UART0_SendData("AT+MIPOPEN=1,5800,\"218.22.32.154\",6000,0\r",10);
+           UART0_SendData(temp,strlen((char *)temp));
+           WaitGSMOK();
+           SoftDelay_ms(2);
+
+         #if 0
+           i = 0;
+           do{
+                i++;
+                if ( i== 0)
+                  break;  
+              UART0_SendData(temp,strlen((char *)temp));
+            }while(WaitGSMOK1());  
+  	  #endif
+           
+           UART0_SendData("AT+MIPOPEN?\r",12);
+           WaitGSMOK();
+           SoftDelay_ms(2);
+     
+ 
+	 
+#if 0
+        UART0_SendData("AT+CGCLASS=\"B\"\r",10);
+
+        SoftDelay_ms(1000);
+
+
+        UART0_SendData("ATD*99***1#\r\n",14);
+
+        WaitGSMOK();
+        SoftDelay_ms(1500);
+
+        UART0_SendData("AT+CGATT?\r\n",12);
+
+        WaitGSMOK();
+        SoftDelay_ms(1000);
+        UART0_SendData("AT+CGDCONT=1,\"IP\",\"CMNET\"\r",30);
+
+        WaitGSMOK();		
+        SoftDelay_ms(2000);
+	
+    #if 1
+        UART0_SendData("AT+CIPSHUT\r",12);
+
+        WaitGSMOK();
+        //UART0_SendData("AT+CIPSTART=\"UDP\",\"218.22.32.154\",6000\r",40);
+          SoftDelay_ms(1500);
+        UART0_SendData(temp,strlen((char *)temp));
+        WaitGSMOK();
+        SoftDelay_ms(1500);
+        UART0_SendData("AT+CIPSTART?\r\n",15);
+
+        WaitGSMOK();
+	 SoftDelay_ms(1500);	
+
+    #else
+
+        UART0_SendData("AT+CIPSHUT\r",12);
+//        SoftDelay_ms(200);
+        WaitGSMOK();
+        SoftDelay_ms(1000);
+        //len = cs.read(buff,100);	
+        UART0_SendData("AT+CIPSTART=\"UDP\",\"218.22.32.154\",6000\r",
+        	sizeof("AT+CIPSTART=\"UDP\",\"218.22.32.154\",6000\r"));  
+        // SoftDelay_ms(2000);
+        WaitGSMOK();
+        SoftDelay_ms(2000);
+        //len = cs.read(buff,100);
+     //   UART0_SendData("AT+CLPORT=\"UDP\",6000\r",20);
+     //   SoftDelay_ms(200);	
+        //len = cs.read(buff,100);	
+        UART0_SendData("AT+CIPSTART?\r\n",15);
+        SoftDelay_ms(100);
+        //len = cs.read(buff,100);	
+     #endif
+
+#endif	
+
+
+
+
+
+}
+
+
+/*
+**-----------------------------------------------------------------------------
+**
+**	概述:
+**		UDP方式 发送数据
+**
+**	参数:
+**		data 	源数据地址
+**		len 	数据长度
+**
+**	返回:
+**		SEND_OK  	发送成功
+**		SEND_FAIL	发送失败
+**
+**-----------------------------------------------------------------------------
+*/
+unsigned char UDPSendData(unsigned char *data,unsigned char len)
+{
+	const unsigned char head[]="AT+MIPSEND=1,\"";
+	unsigned char tmpdata[140];	
+	unsigned short i;
+	unsigned char ret=SEND_OK;
+
+ 	
+	memset(g_ucGPRSDataBuff_hex,0,170);
+	memset(tmpdata,0,50);
+	memcpy(g_ucGPRSDataBuff_hex,head,strlen(head));
+	for(i=0; i<300; i++)
+	{
+		if (BUSY == g_ucSim900Status)
+		{
+		   SoftDelay_ms(1);
+		   if (GPRSCmdFlag == 1)
+		   	return SEND_FAIL;
+		}
+		else
+		 break;	
+	}
+	
+	EI();
+	hextoascii(data,tmpdata,len);
+
+	g_ucSim900Status = BUSY;
+
+	memcpy(&g_ucGPRSDataBuff_hex[14],tmpdata,len*2);
+	g_ucGPRSDataBuff_hex[14+len*2] ='"';
+	g_ucGPRSDataBuff_hex[15+len*2] =0x0d;
+	g_ucGPRSDataBuff_hex[16+len*2] =0x0a;
+      g_ucGPRSDataBuff_hex[17+len*2] =0;
+
+ 
+	UART0_SendData(g_ucGPRSDataBuff_hex,strlen(g_ucGPRSDataBuff_hex));
+	
+	ret =WaitGSMOK1(); 
+	//if (ret == 0)
+	//	UART0_SendData("WaitGSMOK1=1\r",strlen("WaitGSMOK1=1\r"));	
+	
+	UART0_SendData("AT+MIPPUSH=1\r",strlen("AT+MIPPUSH=1\r"));
+	ret = WaitGSMOK1(); 
+	
+ 	g_ucSim900Status = IDLE;
+	//if(strstr((char *)g_ucSim900Buff,"OK") != NULL)
+	if (ret == 0)
+	{
+		//UART0_SendData("SEND_OK\r",strlen("SEND_OK\r"));	
+		return SEND_OK;
+	}
+	else
+	{
+		return SEND_FAIL;
+	}
+}
+
+/*
+**-----------------------------------------------------------------------------
+**
+**	概述:
+**		关闭 GPRS 连接
+**
+**	参数:
+**		无
+**
+**	返回:
+**		无
+**
+**-----------------------------------------------------------------------------
+*/
+void StopGPRS(void)
+{
+	
+}
+
+/*
+**-----------------------------------------------------------------------------
+**
+**	概述:
+**		获取GPRS连接状态
+**
+**	参数:
+**		无
+**
+**	返回:
+**		GPRS_CONNECTED  	GPRS 连接可用
+**		GPRS_DISCONNECTED	GPRS 连接不可用
+**
+**-----------------------------------------------------------------------------
+*/
+unsigned char GetGPRSStatus(void)
+{
+	unsigned char i;
+	for(i=0; i<20; i++)
+	{
+		if (BUSY == g_ucSim900Status)
+		{
+		   SoftDelay_ms(10);
+		}
+		else
+			break;	
+	}	
+		
+	g_ucSim900Status = BUSY;
+	
+//	UART0_SendData("+++",3);
+	//ftDelay_ms(10);
+//	WaitGSMOK();
+#if 0
+	UART0_SendData("AT+CGATT?\r",10);
+	//UART0_ReceiveData(g_ucSim900Buff,0); //
+	WaitGSMOK();
+#else
+        UART0_SendData("AT+MIPOPEN?\r",12);
+        WaitGSMOK();
+#endif
+	
+	g_ucSim900Status = IDLE;
+	if(strstr((char *)g_ucSim900Buff,"ERROR") != NULL)
+        {
+          return GPRS_DISCONNECTED;
+          
+        }
+	if(strstr((char *)g_ucSim900Buff,"1") != NULL)
+	{
+	//	SoftDelay_ms(1000);
+
+	//	ClrSim900Buff();
+
+        #if 0
+                UART0_SendData("AT+CGATT?\r",10);
+                //UART0_ReceiveData(g_ucSim900Buff,0); //
+                WaitGSMOK();
+        #else
+         //       UART0_SendData("AT+MIPOPEN?\r",12);
+        //        WaitGSMOK();
+        #endif
+		//if(strstr((char *)g_ucSim900Buff,"1") == NULL)
+		{
+			//i =  GPRS_CONNECTED;
+		}
+		//else
+		{
+			i =  GPRS_DISCONNECTED;
+		}
+	}
+	else if((strstr((char *)g_ucSim900Buff,"1") == NULL) && (strstr((char *)g_ucSim900Buff,"3"))!= NULL ) 
+	{
+		ClrSim900Buff();
+		i =  GPRS_CONNECTED;
+	}
+        else
+          i =  GPRS_DISCONNECTED;
+
+//	UART0_SendData("ATO\r",4);
+ //      WaitGSMOK();
+
+	   
+	return i;
+}
+
+/*
+**-----------------------------------------------------------------------------
+**
+**	概述:
+**		UDP方式发送经纬度
+**
+**	参数:
+**		无
+**
+**	返回:
+**		无
+**
+**-----------------------------------------------------------------------------
+*/
+void UDPSendLoca(void)
+{
+	unsigned char i=0;
+	while(GetGPRSStatus() != GPRS_CONNECTED)
+	{
+		i ++;
+		StartGPRS();
+		SoftDelay_ms(2000);
+		if (i>3)
+		   break;	
+		feed_wdt();		
+	}
+
+	if(!GetAvailableGPSInfo())
+	{
+		UDPSendData(g_ucNeo6QBuff+19,26);
+	}
+	else return;
+}
+
+/*
+**-----------------------------------------------------------------------------
+**
+**	概述:
+**		拨打指定号码
+**
+**	参数:
+**		phonenum	电话号码
+**
+**	返回:
+**		无
+**
+**-----------------------------------------------------------------------------
+*/
+void CallNum(unsigned char *phonenum)
+{
+	unsigned char temp[16] = {"ATD00000000000;\r"};
+
+	strncpy((char *)temp+3,(char *)phonenum,11);
+
+	UART0_SendData(temp,16);
+}
+
+/*
+**-----------------------------------------------------------------------------
+**
+**	概述:
+**		删除处理完的短信
+**
+**	参数:
+**		无
+**
+**	返回:
+**		无
+**
+**-----------------------------------------------------------------------------
+*/
+void DelDealedSMS(void)
+{
+	unsigned char temp[10] = {'A','T','+','C','M','G','D','='};
+
+	strncat((char *)temp,(char *)g_ucCurrentSMSNum,strlen((char *)g_ucCurrentSMSNum));
+	strcat((char *)temp,"\r");
+
+	UART0_SendData(temp,strlen((char *)g_ucCurrentSMSNum));
+
+	SoftDelay_ms(100);
+
+	g_ucCurrentSMSNum[0] = 0;
+	g_ucCurrentSMSNum[1] = 0;
+}
+
+/*
+**-----------------------------------------------------------------------------
+**
+**	概述:
+**		输出调试信息
+**
+**	参数:
+**		info: 调试信息内容
+**
+**	返回:
+**		无
+**
+**-----------------------------------------------------------------------------
+*/
+
+void DebugOut(unsigned char *info,unsigned char len)
+{
+
+#ifdef DEBUGOUT
+	uart6sendok();
+	if(len == 0)
+	{
+		UART6_SendData(info,strlen((char *)info));
+		//SoftDelay_ms(100);
+	}
+	else
+	{
+		UART6_SendData(info,len);
+		SoftDelay_ms(100);
+	}
+#endif
+

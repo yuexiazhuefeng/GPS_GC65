@@ -1,0 +1,340 @@
+#include "ddi_Norflash.h"
+#include "flash.h" 
+
+static u8 error_flag = 0x5a;
+GimbalsFlag_t  testGimbalsFlag_t;
+
+Gimbals_t  testGimbals;
+
+
+/**********************************************************************
+//说明	:初始化平衡区
+//参数	:平衡区数据结构
+//返回	:
+			0	:成功
+			-1	:失败
+			-2	:平衡区大小定义错误
+			-3	:平衡区字段大小错误
+			-4	:数据区错误,建议格式化数据区
+			-5	:记录为空
+**********************************************************************/
+
+s32 mdd_EXF_GimbalsInit(FlashInfo_t *pInf,Gimbals_t *pGim)
+{
+
+	s32 cnt,addr,tmpaddr;
+  	GimbalsFlag_t temp;
+	
+	
+	if(pGim->Size % pInf->m_u32PageSize != 0) return -2;
+	if(pInf->m_u32PageSize%pGim->FieldLen != 0) return -3;
+	
+	pGim->Max = 0;
+	pGim->Mini = 0xFFFFFFFF;
+	cnt = pGim->Size/pGim->FieldLen;
+	addr = pGim->SA;
+	pGim->MiniAddr = pGim->SA;
+	pGim->MaxAddr = pGim->SA;
+	
+	while(cnt-->0)   //创建cnt个同样的数据区？
+	{
+	  //先读出标示区
+		if(TKH25_Read(pInf,addr,sizeof(GimbalsFlag_t),(u8*)&temp) != 0) 
+			return -1;
+	  //标示相同，才读出数据
+		if((pGim->GimFlag.flag) == (temp.flag))
+		{
+			//check sum
+			u32 cs;
+			s32 i;
+			
+			if(TKH25_Read(pInf,addr+sizeof(GimbalsFlag_t),pGim->FieldLen-sizeof(GimbalsFlag_t),pGim->pData) != 0) 
+				return -1;
+			
+			for(cs=0,i=0;i<pGim->FieldLen-sizeof(GimbalsFlag_t);i++)
+			{
+			
+				cs += (u32)pGim->pData[i];
+			
+			}
+		  //校验和正确，则回写
+			if(cs == temp.cs) //flash 擦除后全为0xff，也可能是原来就有数据
+			{
+		
+				if(temp.cnt < pGim->Mini)
+				{
+				
+					pGim->Mini = temp.cnt;
+					pGim->MiniAddr = addr;
+				
+				}
+		
+				if(temp.cnt >= pGim->Max)//
+				{
+				
+					pGim->Max = temp.cnt;
+					pGim->MaxAddr = addr;//刚擦除的扇区，
+					
+				}
+			}
+			else
+			{
+					//CS出错，可能是上一次写的时候，正好写到一半时MCU复位了，这时取出前一个记录
+					
+					tmpaddr = addr - pGim->FieldLen;
+					if (tmpaddr < pGim->SA)
+					{
+						tmpaddr = pGim->SA + pGim->Size	- pGim->FieldLen;
+					}
+						  //先读出标示区
+					if(TKH25_Read(pInf,tmpaddr,sizeof(GimbalsFlag_t),(u8*)&temp) != 0) 
+							return -1;
+					  //标示相同，才读出数据
+					if((pGim->GimFlag.flag) == (temp.flag))
+					{	
+						if(TKH25_Read(pInf,tmpaddr+sizeof(GimbalsFlag_t),pGim->FieldLen-sizeof(GimbalsFlag_t),pGim->pData) != 0) 
+							return -1;
+						
+						for(cs=0,i=0;i<pGim->FieldLen-sizeof(GimbalsFlag_t);i++)
+						{
+						
+							cs += (u32)pGim->pData[i];
+						
+						}
+					       //校验和正确，则回写
+						if(cs == temp.cs) //flash 擦除后全为0xff，也可能是原来就有数据
+						{
+					
+							if(temp.cnt < pGim->Mini)
+							{
+
+								pGim->Mini = temp.cnt;
+								pGim->MiniAddr = addr;
+
+							}
+					
+							if(temp.cnt >= pGim->Max)//
+							{
+							
+								pGim->Max = temp.cnt;
+								pGim->MaxAddr = addr;//刚擦除的扇区，
+								
+							}
+							//pGim->Max --;
+							pGim->MaxAddr -= 2*(pGim->FieldLen);
+							if (pGim->MaxAddr < pGim->SA)
+								pGim->MaxAddr = pGim->SA + pGim->Size	- pGim->FieldLen;
+							pGim->MaxAddr = pGim->SA+((pGim->MaxAddr-pGim->SA)%pGim->Size); //防止越界
+							error_flag = 0xa5;
+							break; //取当前位置
+						}
+						else
+						
+							return -4;
+					}	
+			
+			}
+		}
+	
+		addr += pGim->FieldLen;
+	
+	}
+	pGim->st = 0x5a5a5a5a; //成功，有效的平衡区
+	
+	if(pGim->Mini == 0xFFFFFFFF)
+	{
+	
+		pGim->Max = 0;
+		pGim->MaxAddr = pGim->SA;
+		pGim->Mini = 0;
+		pGim->MiniAddr = pGim->SA;
+		
+		return -5;
+	}
+	else
+	{
+	
+		pGim->Max++;
+		pGim->MaxAddr += pGim->FieldLen;
+		pGim->MaxAddr = pGim->SA+((pGim->MaxAddr-pGim->SA)%pGim->Size); //防止越界
+	
+	}
+	
+	return 0;
+
+}
+/**********************************************************************
+//说明	:格式化平衡区，擦除平衡区，并在第一个地址写入当前的记录
+//参数	:平衡区数据结构
+//返回	:
+			0	:成功
+			-1	:失败
+**********************************************************************/
+s32 mdd_EXF_GimbalsFormat(FlashInfo_t *pInf,Gimbals_t *pGim)
+{
+	u32 length; //
+	u32 cnt;
+	length =pGim->Size / pInf->m_u32PageSize  ;
+	if (pGim->Size % pInf->m_u32PageSize)
+		length ++;
+	while(length-- > 0)	
+	{
+		if(0 != TKH25_SectorErase(pInf,(pGim->SA/ pInf->m_u32PageSize + length)*(pInf->m_u32PageSize)))
+			return -1;			
+	}	
+	pGim->GimFlag.cs = 0;
+
+	for(cnt=0;cnt<pGim->FieldLen-sizeof(GimbalsFlag_t);cnt++)
+	{
+
+		pGim->GimFlag.cs += (u32)(pGim->pData[cnt]);
+
+	}	
+	pGim->Max = 0;
+       pGim->st = 0x5a5a5a5a;
+#if 0	
+		//Write flag  ，  0
+	pGim->GimFlag.cnt = pGim->Max;
+	
+	if(TKH25_Write(pInf,pGim->MaxAddr,sizeof(GimbalsFlag_t),(u8*)&pGim->GimFlag)!=0) return -1;
+	//Write data
+	if(TKH25_Write(pInf,pGim->MaxAddr+sizeof(GimbalsFlag_t),pGim->FieldLen-sizeof(GimbalsFlag_t),pGim->pData)!=0) return -1;
+		pGim->Max = 0;
+		pGim->MaxAddr = pGim->SA;
+		pGim->Mini = 0;
+		pGim->MiniAddr = pGim->SA;
+	
+	//Address
+	pGim->Max++; 
+	pGim->MaxAddr += pGim->FieldLen;
+	pGim->MaxAddr = pGim->SA+((pGim->MaxAddr-pGim->SA)%pGim->Size); //看是否到平衡区的边界？
+	return 0;
+#else
+
+
+	
+	pGim->Max = 0;
+	pGim->MaxAddr = pGim->SA;
+	pGim->Mini = 0;
+	pGim->MiniAddr = pGim->SA;
+	
+	return 0;
+
+#endif
+	
+}
+
+/**********************************************************************
+//说明	:平衡区数据保存
+//参数	:平衡区数据结构
+//返回	:
+			0	:成功
+			-1	:失败
+			-2	:平衡区末初始化
+**********************************************************************/
+s32 mdd_EXF_GimbalsWrite(FlashInfo_t *pInf,Gimbals_t *pGim)
+{
+	s32 cnt;
+
+	if(pGim->st != 0x5a5a5a5a) return -2;
+	//Check sum
+	pGim->GimFlag.cs = 0;
+
+	for(cnt=0;cnt<pGim->FieldLen-sizeof(GimbalsFlag_t);cnt++)
+	{
+
+		pGim->GimFlag.cs += (u32)(pGim->pData[cnt]);
+
+	}
+	//Need Erase?
+	if (error_flag == 0xa5)
+	{
+		mdd_EXF_GimbalsFormat(pInf,pGim);
+		error_flag = 0;
+	}
+
+	else if((pGim->MaxAddr % 0x1000) == 0)
+	{
+		//擦除新的扇区
+		if(0 != TKH25_SectorErase(pInf,pGim->MaxAddr)) return -1;		
+
+	}
+	//Write flag  ，  0
+	pGim->GimFlag.cnt = pGim->Max;//一秒存一次的话，可以存138年，计数值也不会重复
+	
+	if(TKH25_Write(pInf,pGim->MaxAddr,sizeof(GimbalsFlag_t),(u8*)&pGim->GimFlag)!=0) return -1;
+	//Write data
+	if(TKH25_Write(pInf,pGim->MaxAddr+sizeof(GimbalsFlag_t),pGim->FieldLen-sizeof(GimbalsFlag_t),pGim->pData)!=0) return -1;
+	//Address
+	pGim->Max++; 
+	pGim->MaxAddr += pGim->FieldLen;
+	pGim->MaxAddr = pGim->SA+((pGim->MaxAddr-pGim->SA)%pGim->Size); //看是否到平衡区的边界？
+
+	return 0;	
+}
+/**********************************************************************
+//说明	:读平衡区数据
+//参数1	:平衡区数据结构
+//参数2	:平衡区数据段号
+//返回	:
+			0	:成功
+			-1	:失败
+			-2	:平衡区末准备好
+			-3	:参数错误
+			-4	:校验出错
+**********************************************************************/
+s32 mdd_EXF_GimbalsRead(FlashInfo_t *pInf,Gimbals_t *pGim,u32 FieldID)
+{
+	s32 addr;
+	GimbalsFlag_t temp;
+//	testGimbals.GimFlag.cnt
+	if(pGim->st != 0x5a5a5a5a) return -2;
+
+	if((FieldID)<pGim->Mini || (FieldID)>=pGim->Max)	return -3;
+
+	addr = pGim->SA+(((pGim->MiniAddr-pGim->SA)+((FieldID)-pGim->Mini)*pGim->FieldLen)%pGim->Size);
+
+	if(TKH25_Read(pInf,addr,sizeof(GimbalsFlag_t),(u8*)&temp)==0)
+	{
+		if(temp.flag == pGim->GimFlag.flag)
+		{
+			if(TKH25_Read(pInf,addr+sizeof(GimbalsFlag_t),pGim->FieldLen-sizeof(GimbalsFlag_t),pGim->pData)==0)
+			{
+
+				u32 cs;
+				s32 i;
+
+				for(cs=0,i=0;i<pGim->FieldLen-sizeof(GimbalsFlag_t);i++)
+				{
+					cs += (u32)pGim->pData[i];
+				}
+
+				if(cs == temp.cs)
+				{
+					return 0;
+				}
+				else
+				{
+				//	Print("GimReadCSError:%d\r\n",FieldID);
+					return -4;
+				}
+			}
+		}
+	}
+	return -1;
+
+}
+
+void test_gimbals(void)
+{
+	
+	testGimbalsFlag_t.cnt = 0;
+	testGimbalsFlag_t.cs = 0;
+	testGimbalsFlag_t.flag = 0x99999998;
+	testGimbals.GimFlag = testGimbalsFlag_t;
+	testGimbals.SA  = 0xA0000;
+	testGimbals.Size = 0xe000;
+	testGimbals.FieldLen = 0x80;
+	testGimbals.pData = TEXT_Buffer_SPI;
+}	
+

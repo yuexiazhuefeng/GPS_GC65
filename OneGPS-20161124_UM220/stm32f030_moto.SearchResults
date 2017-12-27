@@ -1,0 +1,9 @@
+---- CXCS Matches (9 in 2 files) ----
+Set_system_use_uart.c (user):					if (strstr((char *)g_ucGPRSCmdBuff,"<CXCS>"))	
+SmsCmd.c (user):<CXCS*220.178.000.056*220.178.000.056*U*9668*CMNET*CMNET*13100000018*13800001111*AN25*AF250*TT45*CS40*VT10*TH:1*JR:IP>并重新启动。
+SmsCmd.c (user):3，	查询终端基本参数 <CXCS*PSD0>
+SmsCmd.c (user):<CXCS*ip1*ip2*T*port*APN1*APN2*M*N*AN25*AF250*TT45*CS40*VT10*TH:1*JR:IP>
+SmsCmd.c (user):		if (strstr(pStart,"<CXCS>") != NULL)
+SmsCmd.c (user):<CXCS*220.178.000.056*PT9668*APCMNET*NNGPRS*NPGPRS*M17800000000*N030*AN020*MO3*CS000*AC1*DX0*YL0*DT005*ST050*SN117800000000*SN21780000000*0120>
+SmsCmd.c (user):	strncat((char *)smsbuf,"<CXCS*",strlen("<CXCS*"));
+SmsCmd.c (user):<CXCS*220.178.000.056*PT9668*APCMNET*NNGPRS*NPGPRS*M17800000000*N030*AN020*MO3*
