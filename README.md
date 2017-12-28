@@ -10,3 +10,4 @@ in master branch to merge fenzhi1
 
 in branch fenzhi2 to test merge --on-of 
 
+in branch fenzhi2 to test merge --on-of  --2
