@@ -8,4 +8,5 @@ test branch fenzhi--
 
 in master branch to merge fenzhi1
 
+in branch fenzhi2 to test merge --on-of 
 
