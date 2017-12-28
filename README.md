@@ -9,6 +9,6 @@ test branch fenzhi--
 in master branch to merge fenzhi1
 
 
-in master branch to test merge --on-of
 
-in branch fenzhi2 to test merge --on-of 
+in branch fenzhi2 to test merge --on-of  --2
+
